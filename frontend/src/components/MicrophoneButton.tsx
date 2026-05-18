@@ -1,8 +1,11 @@
+
 "use client";
 
 import { Mic, Square } from "lucide-react";
 
 import useVoiceRecorder from "@/hooks/useVoiceRecorder";
+
+import api from "@/services/api";
 
 export default function MicrophoneButton() {
   const {
@@ -20,7 +23,26 @@ export default function MicrophoneButton() {
       // STOP
       const audioBlob = await stopRecording();
 
-      console.log("Audio Blob:", audioBlob);
+      if (audioBlob) {
+      const formData = new FormData();
+    
+      formData.append(
+        "audio",
+        audioBlob,
+        "recording.webm"
+      );
+    
+      try {
+        const response = await api.post(
+          "/upload-audio",
+          formData
+        );
+    
+        console.log(response.data);
+      } catch (error) {
+        console.error("Upload failed:", error);
+      }
+}    
 
       // TEMP: play recorded audio
       if (audioBlob) {

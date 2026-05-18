@@ -1,0 +1,13 @@
+# cache files
+pycache__/
+*.pyc   
+
+# env files
+.env
+
+# IDE files
+.vscode/
+
+# ignore folders
+app/uploads/
+
