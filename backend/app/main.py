@@ -1,9 +1,11 @@
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 import shutil
+import whisper
 from pathlib import Path
 
 app = FastAPI()
+model = whisper.load_model("base")
 
 app.add_middleware(
     CORSMiddleware,
@@ -30,10 +32,18 @@ async def upload_audio(audio: UploadFile = File(...)):
     
     file_path = UPLOAD_DIR / audio.filename
 
+    # Save upload file
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(audio.file, buffer)
 
+    # Transcribe audio
+    result = model.transcribe(str(file_path))
+
+    transcript = result["text"]
+
+    print("Transcript:", transcript)
+
     return {
         "message": "Audio uploaded successfully",
-        "filename": audio.filename
+        "transcript": transcript
     }
