@@ -7,7 +7,13 @@ import useVoiceRecorder from "@/hooks/useVoiceRecorder";
 
 import api from "@/services/api";
 
-export default function MicrophoneButton() {
+interface Props {
+  setMessages: React.Dispatch<
+    React.SetStateAction<string[]>
+  >;
+}
+
+export default function MicrophoneButton({ setMessages }: Props) {
   const {
     recording,
     startRecording,
@@ -39,6 +45,12 @@ export default function MicrophoneButton() {
         );
     
         console.log(response.data);
+
+        setMessages((prev) => [
+          ...prev,
+          response.data.transcript,
+    ]);
+
       } catch (error) {
         console.error("Upload failed:", error);
       }

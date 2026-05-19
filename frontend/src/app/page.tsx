@@ -1,3 +1,7 @@
+"use client";
+
+import { useState } from "react";
+
 import ChatWindow from "@/components/ChatWindow";
 import ActionPanel from "@/components/ActionPanel";
 import MemoryPanel from "@/components/MemoryPanel";
@@ -5,11 +9,13 @@ import StatusPanel from "@/components/StatusPanel";
 import MicrophoneButton from "@/components/MicrophoneButton";
 
 export default function HomePage() {
+  const [messages, setMessages] = useState<string[]>([]);
+
   return (
     <main className="h-screen bg-zinc-950 text-white">
       <div className="grid grid-cols-12 h-full">
 
-        {/* LEFT PANEL */}
+        {/* LEFT */}
         <div className="col-span-2 border-r border-zinc-800 p-4">
           <MemoryPanel />
           <ActionPanel />
@@ -17,10 +23,8 @@ export default function HomePage() {
 
         {/* CENTER */}
         <div className="col-span-8 flex flex-col">
-          <h1 className="text-3xl font-bold">
-          Voice-to-Action AI
-          </h1>
-          <ChatWindow />
+
+          <ChatWindow messages={messages} />
 
           <div className="border-t border-zinc-800 p-4 flex gap-3">
             <input
@@ -28,11 +32,12 @@ export default function HomePage() {
               placeholder="Ask the AI agent..."
             />
 
-            <MicrophoneButton />
+            <MicrophoneButton setMessages={setMessages} />
           </div>
+
         </div>
 
-        {/* RIGHT PANEL */}
+        {/* RIGHT */}
         <div className="col-span-2 border-l border-zinc-800 p-4">
           <StatusPanel />
         </div>
