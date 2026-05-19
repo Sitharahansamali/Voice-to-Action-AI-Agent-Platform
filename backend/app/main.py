@@ -1,9 +1,16 @@
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 
+import os
+
+os.environ["PATH"] += os.pathsep + r"D:\ffmpeg-master-latest-win64-gpl-shared\ffmpeg-master-latest-win64-gpl-shared\bin\ffmpeg.exe"
+
 import shutil
 import whisper
 import subprocess
+import librosa
+import torch
+
 from pathlib import Path
 
 app = FastAPI()
@@ -29,16 +36,24 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 async def root():
     return {"message": "Backend running"}
 
-
+FFMPEG_PATH = r"D:\ffmpeg-master-latest-win64-gpl-shared\ffmpeg-master-latest-win64-gpl-shared\bin\ffmpeg.exe"
 @app.post("/upload-audio")
 async def upload_audio(audio: UploadFile = File(...)):
 
     try:
-        # Original uploaded file
-        input_path = UPLOAD_DIR / audio.filename
+        import uuid
 
-        # Converted wav file
-        output_path = UPLOAD_DIR / "converted.wav"
+        unique_id = uuid.uuid4().hex
+
+        # Input webm file
+        input_path = (
+            UPLOAD_DIR / f"{unique_id}.webm"
+        ).resolve()
+
+        # Output wav file
+        output_path = (
+            UPLOAD_DIR / f"{unique_id}.wav"
+        ).resolve()
 
         # Save uploaded audio
         with open(input_path, "wb") as buffer:
@@ -46,25 +61,59 @@ async def upload_audio(audio: UploadFile = File(...)):
 
         print("Audio saved:", input_path)
 
-        # Convert webm -> wav using ffmpeg
-        subprocess.run(
-            [
-                "ffmpeg",
-                "-y",
-                "-i",
-                str(input_path),
-                str(output_path),
-            ],
-            check=True,
+        # FFmpeg conversion
+        command = [
+            FFMPEG_PATH,
+            "-y",
+            "-i",
+            str(input_path),
+            "-acodec",
+            "pcm_s16le",
+            "-ar",
+            "16000",
+            "-ac",
+            "1",
+            str(output_path),
+        ]
+
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
         )
 
-        print("Audio converted to WAV")
+        print("FFMPEG RETURN CODE:", result.returncode)
+        print("FFMPEG STDERR:", result.stderr)
 
-        # Whisper transcription
-        result = model.transcribe(str(output_path))
+        # Verify wav created
+        if not output_path.exists():
+            raise Exception("WAV file was not created")
 
-        transcript = result["text"]
+        print("WAV created:", output_path)
 
+        # Load audio using librosa instead of whisper loader
+        audio_array, sample_rate = librosa.load(
+            str(output_path),
+            sr=16000,
+            mono=True
+        )
+        
+        # Convert to tensor
+        audio_tensor = torch.from_numpy(audio_array)
+        
+        # Pad or trim
+        audio_tensor = whisper.pad_or_trim(audio_tensor)
+        
+        # Mel spectrogram
+        mel = whisper.log_mel_spectrogram(audio_tensor).to(model.device)
+        
+        # Decode
+        options = whisper.DecodingOptions()
+        
+        result = whisper.decode(model, mel, options)
+        
+        transcript = result.text
+        
         print("Transcript:", transcript)
 
         return {
