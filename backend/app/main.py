@@ -1,5 +1,6 @@
 from fastapi import FastAPI, UploadFile, File , Form
 from fastapi.middleware.cors import CORSMiddleware
+from transformers import pipeline
 
 import os
 
@@ -26,6 +27,33 @@ app.add_middleware(
 
 # Load Whisper model
 model = whisper.load_model("base")
+
+# Create intent detection pipeline
+intent_classifier = pipeline(
+    "zero-shot-classification",
+    model="facebook/bart-large-mnli"
+)
+
+# create function to detect intent
+def detect_intent(text: str):
+
+    candidate_labels = [
+        "create_reminder",
+        "save_note",
+        "summarize",
+        "memory_search",
+        "general_chat"
+    ]
+
+    result = intent_classifier(
+        text,
+        candidate_labels
+    )
+
+    return {
+        "intent": result["labels"][0],
+        "score": float(result["scores"][0])
+    }
 
 # upload directory
 UPLOAD_DIR = Path("app/uploads")
@@ -136,9 +164,14 @@ async def upload_audio(audio: UploadFile = File(...), language: str = Form(...))
         
         transcript = result.text
 
+        intent_result = detect_intent(transcript)
+
+        print("Intent:", intent_result)
+
         return {
             "message": "success",
             "transcript": transcript,
+            "intent": intent_result
         }
 
     except Exception as e:
