@@ -11,9 +11,10 @@ interface Props {
   setMessages: React.Dispatch<
     React.SetStateAction<string[]>
   >;
+  language: string;
 }
 
-export default function MicrophoneButton({ setMessages }: Props) {
+export default function MicrophoneButton({ setMessages, language }: Props) {
   const {
     recording,
     startRecording,
@@ -36,6 +37,11 @@ export default function MicrophoneButton({ setMessages }: Props) {
         "audio",
         audioBlob,
         "recording.webm"
+      );
+
+      formData.append(
+        "language", 
+        language
       );
     
       try {

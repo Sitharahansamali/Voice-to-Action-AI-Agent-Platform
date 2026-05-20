@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File , Form
 from fastapi.middleware.cors import CORSMiddleware
 
 import os
@@ -38,7 +38,7 @@ async def root():
 
 FFMPEG_PATH = r"D:\ffmpeg-master-latest-win64-gpl-shared\ffmpeg-master-latest-win64-gpl-shared\bin\ffmpeg.exe"
 @app.post("/upload-audio")
-async def upload_audio(audio: UploadFile = File(...)):
+async def upload_audio(audio: UploadFile = File(...), language: str = Form(...)):
 
     try:
         import uuid
@@ -107,14 +107,34 @@ async def upload_audio(audio: UploadFile = File(...)):
         # Mel spectrogram
         mel = whisper.log_mel_spectrogram(audio_tensor).to(model.device)
         
-        # Decode
-        options = whisper.DecodingOptions()
+        # Detect language
+        _, probs = model.detect_language(mel)
         
-        result = whisper.decode(model, mel, options)
+        detected_language = max(
+            probs,
+            key=probs.get
+        )
+        
+        print("Detected language:", detected_language)
+        
+        # Decode
+        if language == "auto":
+            options = whisper.DecodingOptions(
+                task="transcribe"
+            )
+        else:
+            options = whisper.DecodingOptions(
+                language=language,
+                task="transcribe"
+            )
+        
+        result = whisper.decode(
+            model,
+            mel,
+            options
+        )
         
         transcript = result.text
-        
-        print("Transcript:", transcript)
 
         return {
             "message": "success",
