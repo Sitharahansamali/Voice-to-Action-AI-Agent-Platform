@@ -18,7 +18,7 @@ export default function useVoiceRecorder() {
       });
 
       // Create media recorder
-      const mediaRecorder = new MediaRecorder(stream);
+      const mediaRecorder = new MediaRecorder(stream, {mimeType: "audio/webm;codecs=opus"});
 
       mediaRecorderRef.current = mediaRecorder;
 
@@ -56,7 +56,7 @@ export default function useVoiceRecorder() {
       mediaRecorder.onstop = () => {
         // Create audio blob
         const audioBlob = new Blob(audioChunksRef.current, {
-          type: "audio/webm",
+          type: "audio/webm;codecs=opus",
         });
 
         setRecording(false);
