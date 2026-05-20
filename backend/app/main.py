@@ -31,7 +31,7 @@ model = whisper.load_model("base")
 # Create intent detection pipeline
 intent_classifier = pipeline(
     "zero-shot-classification",
-    model="joeddav/xlm-roberta-large-xnli"
+    model="facebook/bart-large-mnli"
 )
 
 # create function to detect intent
