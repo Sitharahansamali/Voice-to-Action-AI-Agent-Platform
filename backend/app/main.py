@@ -14,6 +14,9 @@ import torch
 
 from pathlib import Path
 
+import json
+from datetime import datetime
+
 app = FastAPI()
 
 
@@ -58,7 +61,10 @@ def detect_intent(text: str):
 # Reminder Tools 
 def reminder_tool(text: str):
 
-    print("Executing Reminder Tool")
+    save_to_memory(
+        "reminder",
+        text
+    )
 
     return {
         "tool": "reminder_tool",
@@ -69,7 +75,10 @@ def reminder_tool(text: str):
 # Note Tools
 def notes_tool(text: str):
 
-    print("Executing Notes Tool")
+    save_to_memory(
+        "note",
+        text
+    )
 
     return {
         "tool": "notes_tool",
@@ -97,6 +106,18 @@ def general_chat_tool(text: str):
         "message": "General conversation detected"
     }
 
+# create memory search tool
+def memory_search_tool():
+
+    with open(MEMORY_FILE, "r") as file:
+        memories = json.load(file)
+
+    return {
+        "tool": "memory_search",
+        "status": "success",
+        "memories": memories[-5:]
+    }
+
 # Tool Router
 def route_tool(intent: str, text: str):
 
@@ -109,8 +130,34 @@ def route_tool(intent: str, text: str):
     elif intent == "send_email":
         return email_tool(text)
 
-    else:
-        return general_chat_tool(text)
+    elif intent == "memory_search":
+        return memory_search_tool()
+    
+# Create memory save function
+MEMORY_FILE = "app/memory/memory.json"
+
+def save_to_memory(
+    memory_type: str,
+    content: str
+):
+
+    with open(MEMORY_FILE, "r") as file:
+        memories = json.load(file)
+
+    new_memory = {
+        "type": memory_type,
+        "content": content,
+        "timestamp": str(datetime.now())
+    }
+
+    memories.append(new_memory)
+
+    with open(MEMORY_FILE, "w") as file:
+        json.dump(
+            memories,
+            file,
+            indent=2
+        )
 
 # upload directory
 UPLOAD_DIR = Path("app/uploads")
