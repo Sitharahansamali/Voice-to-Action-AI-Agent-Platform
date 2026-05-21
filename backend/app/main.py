@@ -34,13 +34,13 @@ intent_classifier = pipeline(
     model="facebook/bart-large-mnli"
 )
 
-# create function to detect intent
+# Create function to detect intent
 def detect_intent(text: str):
 
     candidate_labels = [
         "create_reminder",
         "save_note",
-        "summarize",
+        "send_email",
         "memory_search",
         "general_chat"
     ]
@@ -54,6 +54,63 @@ def detect_intent(text: str):
         "intent": result["labels"][0],
         "score": float(result["scores"][0])
     }
+
+# Reminder Tools 
+def reminder_tool(text: str):
+
+    print("Executing Reminder Tool")
+
+    return {
+        "tool": "reminder_tool",
+        "status": "success",
+        "message": f"Reminder created: {text}"
+    }
+
+# Note Tools
+def notes_tool(text: str):
+
+    print("Executing Notes Tool")
+
+    return {
+        "tool": "notes_tool",
+        "status": "success",
+        "message": f"Note saved: {text}"
+    }
+
+# Email Tool
+def email_tool(text: str):
+
+    print("Executing Email Tool")
+
+    return {
+        "tool": "email_tool",
+        "status": "success",
+        "message": f"Email task detected: {text}"
+    }
+
+# General Chat Tool
+def general_chat_tool(text: str):
+
+    return {
+        "tool": "general_chat",
+        "status": "success",
+        "message": "General conversation detected"
+    }
+
+# Tool Router
+def route_tool(intent: str, text: str):
+
+    if intent == "create_reminder":
+        return reminder_tool(text)
+
+    elif intent == "save_note":
+        return notes_tool(text)
+
+    elif intent == "send_email":
+        return email_tool(text)
+
+    else:
+        return general_chat_tool(text)
 
 # upload directory
 UPLOAD_DIR = Path("app/uploads")
@@ -164,14 +221,26 @@ async def upload_audio(audio: UploadFile = File(...), language: str = Form(...))
         
         transcript = result.text
 
-        intent_result = detect_intent(transcript)
-
-        print("Intent:", intent_result)
+        intent_result = detect_intent(
+            transcript
+        )
+        
+        intent = intent_result["intent"]
+        
+        print("Detected Intent:", intent)
+        
+        tool_result = route_tool(
+            intent,
+            transcript
+        )
+        
+        print("Tool Result:", tool_result)
 
         return {
             "message": "success",
             "transcript": transcript,
-            "intent": intent_result
+            "intent": intent_result,
+            "tool_result": tool_result
         }
 
     except Exception as e:
