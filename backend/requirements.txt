@@ -1,0 +1,15 @@
+fastapi
+uvicorn
+openai-whisper
+torch
+transformers
+chromadb
+librosa
+soundfile
+pydantic
+pydantic-settings
+langgraph
+mcp
+pymongo
+motor
+python-dotenv
