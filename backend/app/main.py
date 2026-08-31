@@ -1,299 +1,119 @@
-from fastapi import FastAPI, UploadFile, File , Form
-from fastapi.middleware.cors import CORSMiddleware
-from transformers import pipeline
-
 import os
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import Optional
+from app.services.speech_service import transcribe_audio_file
+from app.agent.graph import run_agent_workflow
+from app.mcp.client import mcp_client
+from app.memory.memory import search_memory
 
-os.environ["PATH"] += os.pathsep + r"D:\ffmpeg-master-latest-win64-gpl-shared\ffmpeg-master-latest-win64-gpl-shared\bin\ffmpeg.exe"
+app = FastAPI(title="Voice-to-Action AI Agent Platform API")
 
-import shutil
-import whisper
-import subprocess
-import librosa
-import torch
-
-from pathlib import Path
-
-import json
-from datetime import datetime
-
-app = FastAPI()
-
-
+# Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Load Whisper model
-model = whisper.load_model("base")
-
-# Create intent detection pipeline
-intent_classifier = pipeline(
-    "zero-shot-classification",
-    model="facebook/bart-large-mnli"
-)
-
-# Create function to detect intent
-def detect_intent(text: str):
-
-    candidate_labels = [
-        "create_reminder",
-        "save_note",
-        "send_email",
-        "memory_search",
-        "general_chat"
-    ]
-
-    result = intent_classifier(
-        text,
-        candidate_labels
-    )
-
-    return {
-        "intent": result["labels"][0],
-        "score": float(result["scores"][0])
-    }
-
-# Reminder Tools 
-def reminder_tool(text: str):
-
-    save_to_memory(
-        "reminder",
-        text
-    )
-
-    return {
-        "tool": "reminder_tool",
-        "status": "success",
-        "message": f"Reminder created: {text}"
-    }
-
-# Note Tools
-def notes_tool(text: str):
-
-    save_to_memory(
-        "note",
-        text
-    )
-
-    return {
-        "tool": "notes_tool",
-        "status": "success",
-        "message": f"Note saved: {text}"
-    }
-
-# Email Tool
-def email_tool(text: str):
-
-    print("Executing Email Tool")
-
-    return {
-        "tool": "email_tool",
-        "status": "success",
-        "message": f"Email task detected: {text}"
-    }
-
-# General Chat Tool
-def general_chat_tool(text: str):
-
-    return {
-        "tool": "general_chat",
-        "status": "success",
-        "message": "General conversation detected"
-    }
-
-# create memory search tool
-def memory_search_tool():
-
-    with open(MEMORY_FILE, "r") as file:
-        memories = json.load(file)
-
-    return {
-        "tool": "memory_search",
-        "status": "success",
-        "memories": memories[-5:]
-    }
-
-# Tool Router
-def route_tool(intent: str, text: str):
-
-    if intent == "create_reminder":
-        return reminder_tool(text)
-
-    elif intent == "save_note":
-        return notes_tool(text)
-
-    elif intent == "send_email":
-        return email_tool(text)
-
-    elif intent == "memory_search":
-        return memory_search_tool()
-    
-# Create memory save function
-MEMORY_FILE = "app/memory/memory.json"
-
-def save_to_memory(
-    memory_type: str,
-    content: str
-):
-
-    with open(MEMORY_FILE, "r") as file:
-        memories = json.load(file)
-
-    new_memory = {
-        "type": memory_type,
-        "content": content,
-        "timestamp": str(datetime.now())
-    }
-
-    memories.append(new_memory)
-
-    with open(MEMORY_FILE, "w") as file:
-        json.dump(
-            memories,
-            file,
-            indent=2
-        )
-
-# upload directory
-UPLOAD_DIR = Path("app/uploads")
-UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-
+class ChatRequest(BaseModel):
+    message: str
 
 @app.get("/")
+@app.get("/health")
 async def root():
-    return {"message": "Backend running"}
+    return {
+        "status": "healthy",
+        "service": "Voice-to-Action AI Agent Platform",
+        "version": "1.0.0"
+    }
 
-FFMPEG_PATH = r"D:\ffmpeg-master-latest-win64-gpl-shared\ffmpeg-master-latest-win64-gpl-shared\bin\ffmpeg.exe"
 @app.post("/upload-audio")
-async def upload_audio(audio: UploadFile = File(...), language: str = Form(...)):
-
+async def upload_audio(audio: UploadFile = File(...), language: str = Form("auto")):
     try:
-        import uuid
+        content = await audio.read()
+        if not content:
+            raise HTTPException(status_code=400, detail="Empty audio file provided.")
 
-        unique_id = uuid.uuid4().hex
-
-        # Input webm file
-        input_path = (
-            UPLOAD_DIR / f"{unique_id}.webm"
-        ).resolve()
-
-        # Output wav file
-        output_path = (
-            UPLOAD_DIR / f"{unique_id}.wav"
-        ).resolve()
-
-        # Save uploaded audio
-        with open(input_path, "wb") as buffer:
-            shutil.copyfileobj(audio.file, buffer)
-
-        print("Audio saved:", input_path)
-
-        # FFmpeg conversion
-        command = [
-            FFMPEG_PATH,
-            "-y",
-            "-i",
-            str(input_path),
-            "-acodec",
-            "pcm_s16le",
-            "-ar",
-            "16000",
-            "-ac",
-            "1",
-            str(output_path),
-        ]
-
-        result = subprocess.run(
-            command,
-            capture_output=True,
-            text=True,
+        transcription_res = transcribe_audio_file(
+            file_bytes=content,
+            filename=audio.filename or "recording.webm",
+            language=language
         )
+        transcript = transcription_res["text"]
 
-        print("FFMPEG RETURN CODE:", result.returncode)
-        print("FFMPEG STDERR:", result.stderr)
+        if not transcript:
+            return {
+                "message": "warning",
+                "error": "No speech detected in audio.",
+                "transcript": "",
+                "response": "I couldn't hear any speech in the audio. Please try speaking again."
+            }
 
-        # Verify wav created
-        if not output_path.exists():
-            raise Exception("WAV file was not created")
-
-        print("WAV created:", output_path)
-
-        # Load audio using librosa instead of whisper loader
-        audio_array, sample_rate = librosa.load(
-            str(output_path),
-            sr=16000,
-            mono=True
-        )
-        
-        # Convert to tensor
-        audio_tensor = torch.from_numpy(audio_array)
-        
-        # Pad or trim
-        audio_tensor = whisper.pad_or_trim(audio_tensor)
-        
-        # Mel spectrogram
-        mel = whisper.log_mel_spectrogram(audio_tensor).to(model.device)
-        
-        # Detect language
-        _, probs = model.detect_language(mel)
-        
-        detected_language = max(
-            probs,
-            key=probs.get
-        )
-        
-        print("Detected language:", detected_language)
-        
-        # Decode
-        if language == "auto":
-            options = whisper.DecodingOptions(
-                task="transcribe"
-            )
-        else:
-            options = whisper.DecodingOptions(
-                language=language,
-                task="transcribe"
-            )
-        
-        result = whisper.decode(
-            model,
-            mel,
-            options
-        )
-        
-        transcript = result.text
-
-        intent_result = detect_intent(
-            transcript
-        )
-        
-        intent = intent_result["intent"]
-        
-        print("Detected Intent:", intent)
-        
-        tool_result = route_tool(
-            intent,
-            transcript
-        )
-        
-        print("Tool Result:", tool_result)
+        agent_res = run_agent_workflow(transcript)
 
         return {
             "message": "success",
             "transcript": transcript,
-            "intent": intent_result,
-            "tool_result": tool_result
+            "detected_language": transcription_res["detected_language"],
+            "intent": agent_res["intent"],
+            "tool_name": agent_res["tool_name"],
+            "tool_arguments": agent_res["tool_arguments"],
+            "tool_result": agent_res["tool_result"],
+            "response": agent_res["response"],
+            "steps": agent_res["steps_log"]
         }
 
     except Exception as e:
-        print("ERROR:", str(e))
-
+        print("Upload Audio Error:", str(e))
         return {
             "message": "error",
             "error": str(e),
+            "response": f"An error occurred while processing audio: {str(e)}"
         }
+
+@app.post("/chat")
+async def chat_endpoint(req: ChatRequest):
+    try:
+        user_message = req.message.strip()
+        if not user_message:
+            raise HTTPException(status_code=400, detail="Message content cannot be empty.")
+
+        agent_res = run_agent_workflow(user_message)
+
+        return {
+            "message": "success",
+            "input_text": user_message,
+            "intent": agent_res["intent"],
+            "tool_name": agent_res["tool_name"],
+            "tool_arguments": agent_res["tool_arguments"],
+            "tool_result": agent_res["tool_result"],
+            "response": agent_res["response"],
+            "steps": agent_res["steps_log"]
+        }
+
+    except Exception as e:
+        print("Chat Endpoint Error:", str(e))
+        return {
+            "message": "error",
+            "error": str(e),
+            "response": f"An error occurred: {str(e)}"
+        }
+
+@app.get("/reminders")
+async def list_reminders():
+    res = mcp_client.call_tool("list_reminders", {})
+    return res
+
+@app.get("/notes")
+async def list_notes():
+    res = mcp_client.call_tool("get_notes", {})
+    return res
+
+@app.get("/memories")
+async def list_memories(query: str = ""):
+    res = search_memory(query if query else "agent", n_results=5)
+    return res
